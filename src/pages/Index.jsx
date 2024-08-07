@@ -5,6 +5,9 @@ import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { FileText, Upload, ChevronUp, ChevronDown, X } from 'lucide-react';
 import { DragDropContext, Droppable, Draggable } from 'react-beautiful-dnd';
+import { Document, Page } from 'react-pdf';
+import 'react-pdf/dist/esm/Page/AnnotationLayer.css';
+import 'react-pdf/dist/esm/Page/TextLayer.css';
 
 const Index = () => {
   const [pdfFiles, setPdfFiles] = useState([]);
@@ -27,10 +30,7 @@ const Index = () => {
         const pdfDoc = await PDFDocument.load(await file.arrayBuffer());
         const pageCount = pdfDoc.getPageCount();
         for (let i = 0; i < pageCount; i++) {
-          const pdfBytes = await pdfDoc.save();
-          const blob = new Blob([pdfBytes], { type: 'application/pdf' });
-          const url = URL.createObjectURL(blob);
-          newPages.push({ id: `${id}-${i}`, url, pageNumber: i + 1, fileName: file.name });
+          newPages.push({ id: `${id}-${i}`, file, pageNumber: i + 1, fileName: file.name });
         }
       }
       setPdfPages(newPages);
@@ -116,7 +116,9 @@ const Index = () => {
                           {...provided.dragHandleProps}
                           className="relative bg-white p-2 rounded shadow"
                         >
-                          <img src={page.url} alt={`Page ${page.pageNumber}`} className="w-32 h-40 object-cover" />
+                          <Document file={page.file}>
+                            <Page pageNumber={page.pageNumber} width={128} />
+                          </Document>
                           <div className="absolute top-0 right-0 p-1">
                             <Button
                               variant="destructive"
