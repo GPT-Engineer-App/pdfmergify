@@ -1,10 +1,9 @@
 import React, { useState, useCallback } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { PDFDocument } from 'pdf-lib';
-import { DragDropContext, Droppable, Draggable } from 'react-beautiful-dnd';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { FileText, Upload, GripVertical } from 'lucide-react';
+import { FileText, Upload, ChevronUp, ChevronDown } from 'lucide-react';
 
 const Index = () => {
   const [pdfFiles, setPdfFiles] = useState([]);
@@ -25,12 +24,14 @@ const Index = () => {
     multiple: true,
   });
 
-  const onDragEnd = (result) => {
-    if (!result.destination) return;
-    const items = Array.from(pdfFiles);
-    const [reorderedItem] = items.splice(result.source.index, 1);
-    items.splice(result.destination.index, 0, reorderedItem);
-    setPdfFiles(items);
+  const moveFile = (index, direction) => {
+    const newFiles = [...pdfFiles];
+    if (direction === 'up' && index > 0) {
+      [newFiles[index - 1], newFiles[index]] = [newFiles[index], newFiles[index - 1]];
+    } else if (direction === 'down' && index < newFiles.length - 1) {
+      [newFiles[index], newFiles[index + 1]] = [newFiles[index + 1], newFiles[index]];
+    }
+    setPdfFiles(newFiles);
   };
 
   const mergePDFs = async () => {
@@ -79,33 +80,33 @@ const Index = () => {
       </div>
       {pdfFiles.length > 0 && (
         <div className="mb-8 w-full max-w-md">
-          <h2 className="text-2xl font-semibold mb-4">Uploaded Files (Drag to Reorder):</h2>
-          <DragDropContext onDragEnd={onDragEnd}>
-            <Droppable droppableId="pdf-list">
-              {(provided) => (
-                <ul {...provided.droppableProps} ref={provided.innerRef} className="space-y-2">
-                  {pdfFiles.map(({ id, file }, index) => (
-                    <Draggable key={id} draggableId={id.toString()} index={index}>
-                      {(provided) => (
-                        <li
-                          ref={provided.innerRef}
-                          {...provided.draggableProps}
-                          className="flex items-center bg-white p-2 rounded shadow"
-                        >
-                          <span {...provided.dragHandleProps} className="mr-2">
-                            <GripVertical className="h-5 w-5 text-gray-400" />
-                          </span>
-                          <FileText className="mr-2 h-5 w-5 text-blue-500" />
-                          <span className="truncate">{file.name}</span>
-                        </li>
-                      )}
-                    </Draggable>
-                  ))}
-                  {provided.placeholder}
-                </ul>
-              )}
-            </Droppable>
-          </DragDropContext>
+          <h2 className="text-2xl font-semibold mb-4">Uploaded Files:</h2>
+          <ul className="space-y-2">
+            {pdfFiles.map(({ id, file }, index) => (
+              <li key={id} className="flex items-center bg-white p-2 rounded shadow">
+                <FileText className="mr-2 h-5 w-5 text-blue-500" />
+                <span className="truncate flex-grow">{file.name}</span>
+                <div className="flex space-x-2">
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={() => moveFile(index, 'up')}
+                    disabled={index === 0}
+                  >
+                    <ChevronUp className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={() => moveFile(index, 'down')}
+                    disabled={index === pdfFiles.length - 1}
+                  >
+                    <ChevronDown className="h-4 w-4" />
+                  </Button>
+                </div>
+              </li>
+            ))}
+          </ul>
         </div>
       )}
       <Button onClick={mergePDFs} disabled={pdfFiles.length < 2}>
