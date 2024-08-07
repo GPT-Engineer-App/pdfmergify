@@ -1,12 +1,14 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { PDFDocument } from 'pdf-lib';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { FileText, Upload, ChevronUp, ChevronDown } from 'lucide-react';
+import { FileText, Upload, ChevronUp, ChevronDown, X } from 'lucide-react';
+import { DragDropContext, Droppable, Draggable } from 'react-beautiful-dnd';
 
 const Index = () => {
   const [pdfFiles, setPdfFiles] = useState([]);
+  const [pdfPages, setPdfPages] = useState([]);
   const [mergedPdfUrl, setMergedPdfUrl] = useState(null);
   const [error, setError] = useState(null);
 
@@ -18,36 +20,56 @@ const Index = () => {
     setError(null);
   }, []);
 
+  useEffect(() => {
+    const loadPdfPages = async () => {
+      const newPages = [];
+      for (const { id, file } of pdfFiles) {
+        const pdfDoc = await PDFDocument.load(await file.arrayBuffer());
+        const pageCount = pdfDoc.getPageCount();
+        for (let i = 0; i < pageCount; i++) {
+          const pdfBytes = await pdfDoc.save();
+          const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+          const url = URL.createObjectURL(blob);
+          newPages.push({ id: `${id}-${i}`, url, pageNumber: i + 1, fileName: file.name });
+        }
+      }
+      setPdfPages(newPages);
+    };
+
+    loadPdfPages();
+  }, [pdfFiles]);
+
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
     accept: { 'application/pdf': ['.pdf'] },
     multiple: true,
   });
 
-  const moveFile = (index, direction) => {
-    const newFiles = [...pdfFiles];
-    if (direction === 'up' && index > 0) {
-      [newFiles[index - 1], newFiles[index]] = [newFiles[index], newFiles[index - 1]];
-    } else if (direction === 'down' && index < newFiles.length - 1) {
-      [newFiles[index], newFiles[index + 1]] = [newFiles[index + 1], newFiles[index]];
-    }
-    setPdfFiles(newFiles);
+  const onDragEnd = (result) => {
+    if (!result.destination) return;
+    const items = Array.from(pdfPages);
+    const [reorderedItem] = items.splice(result.source.index, 1);
+    items.splice(result.destination.index, 0, reorderedItem);
+    setPdfPages(items);
+  };
+
+  const removePage = (pageId) => {
+    setPdfPages((prevPages) => prevPages.filter((page) => page.id !== pageId));
   };
 
   const mergePDFs = async () => {
-    if (pdfFiles.length < 2) {
-      setError('Please upload at least two PDF files to merge.');
+    if (pdfPages.length < 2) {
+      setError('Please upload at least two PDF pages to merge.');
       return;
     }
 
     try {
       const mergedPdf = await PDFDocument.create();
 
-      for (const { file } of pdfFiles) {
-        const pdfBytes = await file.arrayBuffer();
-        const pdf = await PDFDocument.load(pdfBytes);
-        const copiedPages = await mergedPdf.copyPages(pdf, pdf.getPageIndices());
-        copiedPages.forEach((page) => mergedPdf.addPage(page));
+      for (const page of pdfPages) {
+        const pdfDoc = await PDFDocument.load(await fetch(page.url).then(res => res.arrayBuffer()));
+        const [copiedPage] = await mergedPdf.copyPages(pdfDoc, [page.pageNumber - 1]);
+        mergedPdf.addPage(copiedPage);
       }
 
       const pdfBytes = await mergedPdf.save();
@@ -78,39 +100,47 @@ const Index = () => {
           </div>
         )}
       </div>
-      {pdfFiles.length > 0 && (
-        <div className="mb-8 w-full max-w-md">
-          <h2 className="text-2xl font-semibold mb-4">Uploaded Files:</h2>
-          <ul className="space-y-2">
-            {pdfFiles.map(({ id, file }, index) => (
-              <li key={id} className="flex items-center bg-white p-2 rounded shadow">
-                <FileText className="mr-2 h-5 w-5 text-blue-500" />
-                <span className="truncate flex-grow">{file.name}</span>
-                <div className="flex space-x-2">
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    onClick={() => moveFile(index, 'up')}
-                    disabled={index === 0}
-                  >
-                    <ChevronUp className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    onClick={() => moveFile(index, 'down')}
-                    disabled={index === pdfFiles.length - 1}
-                  >
-                    <ChevronDown className="h-4 w-4" />
-                  </Button>
-                </div>
-              </li>
-            ))}
-          </ul>
+      {pdfPages.length > 0 && (
+        <div className="mb-8 w-full max-w-4xl">
+          <h2 className="text-2xl font-semibold mb-4">PDF Pages:</h2>
+          <DragDropContext onDragEnd={onDragEnd}>
+            <Droppable droppableId="pdfPages" direction="horizontal">
+              {(provided) => (
+                <ul {...provided.droppableProps} ref={provided.innerRef} className="flex flex-wrap gap-4">
+                  {pdfPages.map((page, index) => (
+                    <Draggable key={page.id} draggableId={page.id} index={index}>
+                      {(provided) => (
+                        <li
+                          ref={provided.innerRef}
+                          {...provided.draggableProps}
+                          {...provided.dragHandleProps}
+                          className="relative bg-white p-2 rounded shadow"
+                        >
+                          <img src={page.url} alt={`Page ${page.pageNumber}`} className="w-32 h-40 object-cover" />
+                          <div className="absolute top-0 right-0 p-1">
+                            <Button
+                              variant="destructive"
+                              size="icon"
+                              onClick={() => removePage(page.id)}
+                              className="h-6 w-6"
+                            >
+                              <X className="h-4 w-4" />
+                            </Button>
+                          </div>
+                          <p className="text-xs mt-1 text-center">{`${page.fileName} - Page ${page.pageNumber}`}</p>
+                        </li>
+                      )}
+                    </Draggable>
+                  ))}
+                  {provided.placeholder}
+                </ul>
+              )}
+            </Droppable>
+          </DragDropContext>
         </div>
       )}
-      <Button onClick={mergePDFs} disabled={pdfFiles.length < 2}>
-        Merge PDFs
+      <Button onClick={mergePDFs} disabled={pdfPages.length < 2}>
+        Merge PDF Pages
       </Button>
       {error && (
         <Alert variant="destructive" className="mt-4">
